@@ -2,6 +2,9 @@ mod utils;
 
 use std::fmt;
 use wasm_bindgen::prelude::*;
+use std::collections::VecDeque;
+use rand;
+
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -16,6 +19,23 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 pub enum Cell {
     Dead = 0,
     Alive = 1,
+    Food = 2,
+}
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cord {
+    x: u32,
+    y: u32,
+}
+
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Up = 0,
+    Right = 1,
+    Down = 2,
+    Left = 3,
 }
 
 #[wasm_bindgen]
@@ -23,6 +43,9 @@ pub struct Universe {
     width: u32,
     height: u32,
     cells: Vec<Cell>,
+    direction: Direction,
+    snake: VecDeque<Cord>,
+    is_gameover: bool,
 }
 
 impl fmt::Display for Universe {
@@ -42,6 +65,7 @@ impl fmt::Display for Universe {
 /// Public methods, exported to JavaScript.
 #[wasm_bindgen]
 impl Universe {
+
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -53,62 +77,113 @@ impl Universe {
     pub fn cells(&self) -> *const Cell {
         self.cells.as_ptr()
     }
+    pub fn is_gameover(&self) -> bool {
+        self.is_gameover
+    }
+    pub fn change_direction(&mut self, direction: Direction) {
+        
+        self.direction = match direction {
+            Direction::Up if self.direction != Direction::Down => direction,
+            Direction::Right if self.direction != Direction::Left => direction,
+            Direction::Down if self.direction != Direction::Up => direction,
+            Direction::Left if self.direction != Direction::Right => direction,
+            _ => self.direction,
+        };
+    }
     pub fn tick(&mut self) {
-        let mut next = self.cells.clone();
+        // let mut next = self.cells.clone();
+        let head = self.snake.front().unwrap();
+        let idx = self.get_index(head.x, head.y); 
+        self.cells[idx] = Cell::Dead;
+        let new_head = match self.direction {
+            Direction::Up if head.x == 0 => (self.height - 1, head.y),
+            Direction::Up => (head.x - 1, head.y),
+            Direction::Right => (head.x, (head.y + 1) % self.width),
+            Direction::Down => ((head.x + 1) % self.height, head.y),
+            Direction::Left if head.y == 0 => (head.x, self.width - 1),
+            Direction::Left => (head.x, (head.y - 1)),
+        };
+        self.snake.push_front(Cord{x: new_head.0, y: new_head.1});
+        match self.cells[self.get_index(new_head.0, new_head.1)] {
+            Cell::Food => { self.place_food(); },
+            Cell::Dead => {
+                let released = self.snake.pop_back().unwrap();
+                let idx = self.get_index(released.x, released.y); 
+                self.cells[idx] = Cell::Dead;
+            },
+            Cell::Alive => {
+                self.is_gameover = true;
+            }
+        };
 
-        for row in 0..self.height {
-            for col in 0..self.width {
-                let idx = self.get_index(row, col);
-                let cell = self.cells[idx];
-                let live_neighbors = self.live_neighbor_count(row, col);
 
-                let next_cell = match (cell, live_neighbors) {
-                    // Rule 1: Any live cell with fewer than two live neighbours
-                    // dies, as if caused by underpopulation.
-                    (Cell::Alive, x) if x < 2 => Cell::Dead,
-                    // Rule 2: Any live cell with two or three live neighbours
-                    // lives on to the next generation.
-                    (Cell::Alive, 2) | (Cell::Alive, 3) => Cell::Alive,
-                    // Rule 3: Any live cell with more than three live
-                    // neighbours dies, as if by overpopulation.
-                    (Cell::Alive, x) if x > 3 => Cell::Dead,
-                    // Rule 4: Any dead cell with exactly three live neighbours
-                    // becomes a live cell, as if by reproduction.
-                    (Cell::Dead, 3) => Cell::Alive,
-                    // All other cells remain in the same state.
-                    (otherwise, _) => otherwise,
-                };
 
-                next[idx] = next_cell;
+        
+        // let idx = self.get_index(head.x, head.y); 
+        
+        for cord in self.snake.iter() {
+            let idx = self.get_index(cord.x, cord.y); 
+            self.cells[idx] = Cell::Alive;
+        }
+        // self.cells[idx] = Cell::Alive;
+
+        // self.cells = next;
+    }
+
+    fn cell_in_snake(&self, cell: usize) -> bool {
+        for sn_cell in self.snake.iter() {
+            if cell == self.get_index(sn_cell.x, sn_cell.y) {
+                return true;
             }
         }
-
-        self.cells = next;
+        return false;
     }
+
+    fn place_food(&mut self) {
+        let mut x = rand::random::<usize>() % self.cells.len();
+        while self.cell_in_snake(x) {
+            x = rand::random::<usize>() % self.cells.len();
+        }
+        self.cells[x] = Cell::Food;
+    }
+
     pub fn new() -> Universe {
-        let width = 10;
-        let height = 20;
+        let width = 50;
+        let height = 50;
 
-        let cells = (0..width * height)
-            .map(|i| {
-                if i % 3 == 0 || i % 7 == 0 {
-                    Cell::Alive
-                } else {
-                    Cell::Dead
-                }
-            })
+        let cells: Vec<Cell> = (0..width * height)
+            .map(|_| {Cell::Dead})
             .collect();
+        let direction = Direction::Right;
+        
 
-        Universe {
+        let mut snake = VecDeque::new();
+        snake.push_back(Cord{x:5, y:5});
+        // snake.push_back(Cord{x:5, y:6});
+        // snake.push_back(Cord{x:5, y:7});
+        // snake.push_back(Cord{x:5, y:8});
+        // snake.push_back(Cord{x:5, y:9});
+        // snake.push_back(Cord{x:5, y:10});
+        // snake.push_back(Cord{x:5, y:11});
+
+        // let idx = 60;
+        // cells[idx] = Cell::Alive;
+        let mut u = Universe {
             width,
             height,
             cells,
-        }
+            direction,
+            snake,
+            is_gameover: false,
+        };
+        u.place_food();
+        u
     }
 
     pub fn render(&self) -> String {
         self.to_string()
     }
+
     fn get_index(&self, row: u32, column: u32) -> usize {
         (row * self.width + column) as usize
     }

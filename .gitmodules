@@ -1,0 +1,3 @@
+[submodule "wasm-snake-js"]
+	path = www
+	url = https://github.com/chitalian/wasm-snake-js.git
