@@ -46,6 +46,7 @@ pub struct Universe {
     direction: Direction,
     snake: VecDeque<Cord>,
     is_gameover: bool,
+    next_dir: Option<Direction>,
 }
 
 impl fmt::Display for Universe {
@@ -81,16 +82,19 @@ impl Universe {
         self.is_gameover
     }
     pub fn change_direction(&mut self, direction: Direction) {
-        
-        self.direction = match direction {
+        self.next_dir = Some(match direction {
             Direction::Up if self.direction != Direction::Down => direction,
             Direction::Right if self.direction != Direction::Left => direction,
             Direction::Down if self.direction != Direction::Up => direction,
             Direction::Left if self.direction != Direction::Right => direction,
             _ => self.direction,
-        };
+        });
     }
     pub fn tick(&mut self) {
+        if let Some(dir) = self.next_dir {
+            self.direction = dir;
+        }
+        
         // let mut next = self.cells.clone();
         let head = self.snake.front().unwrap();
         let idx = self.get_index(head.x, head.y); 
@@ -168,6 +172,7 @@ impl Universe {
 
         // let idx = 60;
         // cells[idx] = Cell::Alive;
+        let next_dir = None;
         let mut u = Universe {
             width,
             height,
@@ -175,6 +180,7 @@ impl Universe {
             direction,
             snake,
             is_gameover: false,
+            next_dir,
         };
         u.place_food();
         u
